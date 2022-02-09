@@ -9,3 +9,5 @@ Project on Echo State Networks in all kinds of flavors.
  * Set up everything manually. But use **functional form** for preparing inputs, training ESN and prediction.
  * Here we choose an input length and then use this input length for all input samples in *one* training run.
  * Later tune and play with hyperparameters, input length, number of reservoir units, target length (1d, 2d,.., 10d) and prepare using multi-reservoirs with lagged input series.
+ * Analyse convergence / divergence behavior of reservoir states, depending on several parameters: Activation, input length, scaling of relative change input values, spectral radius, sparsity.
+ * Distribution of trained output weights W_out and final reservoir states x(T) for all reservoir units for single sample.
