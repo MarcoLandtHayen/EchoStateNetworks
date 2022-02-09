@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 # time_lag (int): Necessary when creating inputs for multi-reservoir ESN, having timelag 0,1,2,... days between
 #                 input and target.
 # train_val_split ([0,1]): rel. amount of input samples used for training
-# abs_to_rel_YN: if True, convert absolute values to relative change values
+# abs_to_rel_YN (True/False): if True, convert absolute values to relative change values
 # scaled_YN (True/False):if True, scale inputs and targets to [0,1] applying min/max scaling 
 #                        according to min/max obtained from only train inputs
 # verbose (True/False)): if True, print shapes of function input and output
@@ -227,23 +227,28 @@ def trainESN(train_input, train_target, n_res, sparsity=0.2, spectral_rad=1.2, w
 
 ## Function input: 
 # Feed weight matrices W_in, W_res and W_out from traines ESN.
-# Feed validation data with relative change values: val_input and val_target with
+# Feed validation data with absolute or relative change values: val_input and val_target with
 # dimensions (num samples, num timesteps) and (num samples), respectively.
 
 ## Parameters:
 # activation ('tanh', 'sigmoid'): Specify function for transition of reservoir states. (Shoud be the same as in training!)
-# scaled_YN (True/False): Flags if we work have scaled inputs and targets. This is important to know, since  
+# abs_values_YN (True/False): Flags if we have absolute values as function input. This is important for
+#                             correctly calculating accuracy. And determines the output as either absolute
+#                             or relative change values.
+# scaled_YN (True/False): Flags if we have scaled inputs and targets. This is important to know, since  
 #                         calculating the accuracy requires un-scaled rel. change values.
 # train_min / train_max: If we have scaled inputs, we need min and max values used for scaling.
 # verbose (True/False)): if True, print shapes of function input and output plus evaluation metrics
 
 ## Function output:
-# Returns array containing true targets val_target (num samples), as un-scaled rel. change values.
-# Returns array containing predictions val_pred (num samples), as un-scaled rel. change values.
+# Returns array containing true targets val_target (num samples), as un-scaled absolute or
+# rel. change values, depending on attribute abs_values_YN: If True return absolute values, else rel. changes.
+# Returns array containing predictions val_pred (num samples), as un-scaled absolute or
+# rel. change values, depending on attribute abs_values_YN: If True return absolute values, else rel. changes.
 # Returns accuracy as amount of correctly predicted up/down movements.
 # Returns mean-absolute-error for deviation of predicted values from true targets.
 
-def predESN(W_in, W_res, W_out, val_input, val_target, activation='tanh', scaled_YN=False, 
+def predESN(W_in, W_res, W_out, val_input, val_target, activation='tanh', abs_values_YN=False, scaled_YN=False, 
             train_min=0.0, train_max=0.0, verbose=True):
     
     # Get number of reservoir units (n_res), number of samples (n_samples) and input length (T) from inputs
@@ -287,14 +292,32 @@ def predESN(W_in, W_res, W_out, val_input, val_target, activation='tanh', scaled
     if scaled_YN:
         val_target = val_target * (train_max - train_min) + train_min
         val_pred = val_pred  * (train_max - train_min) + train_min
-              
+    
+             
     ## Evaluate ESN prediction
     
-    # check balance in up/down movements of validation data
-    val_balance = np.round(sum(val_target>=0) / len(val_target), 3)
+    # Temporarily create rel. change target and prediction, if absolute values are given as function input,
+    # because calculating balance and accuracy requires un-scaled rel. change values.
     
-    # get prediction accuracy from rel. change prediction
-    accuracy = np.round(sum(np.sign(val_target) == np.sign(val_pred)) / len(val_target), 3)
+    if abs_values_YN:
+                       
+        # Create rel. change targets
+        val_target_temp = (val_target[1:] - val_target[:-1]) / val_target[:-1]
+        val_pred_temp = (val_pred[1:] - val_pred[:-1]) / val_pred[:-1]  
+    
+        # check balance in up/down movements of validation data
+        val_balance = np.round(sum(val_target_temp>=0) / len(val_target_temp), 3)
+        
+        # get prediction accuracy from rel. change prediction
+        accuracy = np.round(sum(np.sign(val_target_temp) == np.sign(val_pred_temp)) / len(val_target_temp), 3)
+
+    # If function input is already given as rel. change values, can directly calculate balance and accuracy
+    else:
+        # check balance in up/down movements of validation data
+        val_balance = np.round(sum(val_target>=0) / len(val_target), 3)
+        
+        # get prediction accuracy from rel. change prediction
+        accuracy = np.round(sum(np.sign(val_target) == np.sign(val_pred)) / len(val_target), 3)
 
     # get mean-absolute-error for deviation of predicted values from true targets
     mae = np.round(sum(np.abs(val_target - val_pred)) / len(val_target), 4)
@@ -315,6 +338,109 @@ def predESN(W_in, W_res, W_out, val_input, val_target, activation='tanh', scaled
     
     # return values
     return val_target, val_pred, accuracy, mae
+
+
+### Define function to get CNN/LSTM predictions and evaluation metrics on validation data:
+
+## Function input: 
+# Feed validation data with relative change values: val_input and val_target with
+# dimensions (num samples, num timesteps, num features) and (num samples), respectively.
+
+## Parameters:
+# model: trained CNN/LSTM model
+# target_length (int): Necessary information to reconstruct absolute values from relativ change values.
+# scaled_YN (True/False): Flags if we have scaled inputs and targets. This is important to know, since  
+#                         calculating the accuracy requires un-scaled rel. change values.
+# train_min / train_max: If we have scaled inputs, we need min and max values used for scaling.
+# abs_base: Optionally input initial absolute value to hook on, if omitted, set default: 1.
+# verbose (True/False)): if True, print shapes of function input and output plus evaluation metrics
+
+## Function output:
+# Returns array containing true targets val_target (num samples), as un-scaled absolute values.
+# Returns array containing predictions val_pred (num samples), as un-scaled absolute values.
+# Returns accuracy as amount of correctly predicted up/down movements.
+# Returns mean-absolute-error mae_rel_chg and mae_abs for deviation of predicted values from true targets,
+# as rel. change values and absolute values, respectively.
+
+def predCNNLSTM(val_input, val_target, model, target_length=1, scaled_YN=False, train_min=0.0, train_max=0.0, abs_base=1.0, verbose=True):
+                       
+    # Get predicted output from trained model for all validation inputs.
+    # Note: val_pred comes with shape (1, num samples), need to get rid of first dimension.
+    val_pred = model.predict(val_input)
+    
+    # Optionally re-scale target and prediction before calculating accuracy on un-scaled rel. change values.
+    if scaled_YN:
+        val_target = val_target * (train_max - train_min) + train_min
+        val_pred = val_pred  * (train_max - train_min) + train_min
+    
+             
+    ## Evaluate ESN prediction
+    
+    # Function input is given as rel. change values and is now un-scaled, 
+    # as required for calculating balance and accuracy.
+    
+    # check balance in up/down movements of validation data
+    val_balance = np.round(sum(val_target>=0) / len(val_target), 3)
+
+    # get prediction accuracy from rel. change prediction
+    accuracy = np.round(sum(np.sign(val_target) == np.sign(val_pred[:,0])) / len(val_target), 3)
+
+    # Get mean-absolute-error for deviation of predicted values from true targets, using rel. change values!
+    mae_rel_chg = np.round(sum(np.abs(val_target - val_pred[:,0])) / len(val_target), 4)
+
+    ## Now re-convert rel. change values to absolute values:   
+    
+    # Initialize storage for time series with absolute values.
+    val_target_abs = np.zeros(len(val_target))
+    val_pred_abs = np.zeros(len(val_target))
+    
+    # Loop over input series, optionally hook on base value
+    for i in range(len(val_target)):
+        
+        # First target_length values are hooked on the same base value (or default: 1), for simplicity.
+        # To be more accurate, one needed target_length base values to hook on.
+        if i < target_length:
+            val_target_abs[i] = abs_base * (1 + val_target[i])
+            val_pred_abs[i] = abs_base * (1 + val_pred[i,0])
+        # Here: One-step prediction with "teacher-forcing", hence hook on true absolute values.
+        # Note: Tage target_length into account, to hook on correct true value: target_length steps back.
+        elif i >= target_length:
+            val_target_abs[i] = val_target_abs[i-target_length] * (1 + val_target[i])
+            val_pred_abs[i] = val_target_abs[i-target_length] * (1 + val_pred[i,0])
+
+    # Get mean-absolute-error for deviation of predicted values from true targets, using absolute values!
+    mae_abs = np.round(sum(np.abs(val_target_abs - val_pred_abs)) / len(val_target_abs), 4)
+
+
+    
+    # Optionally print dimensions and plot true vs. predicted absolute values
+    if verbose:
+        
+        # Fidelity check: Plot true vs. predicted absolute values
+        plt.figure(figsize=(16,8))
+        plt.plot(range(len(val_target_abs)),val_target_abs,'b',label="true data", alpha=0.3)
+        plt.plot(range(len(val_pred_abs)),val_pred_abs,'k',  alpha=0.8, label='pred data')
+        plt.legend()
+        plt.show()
+        
+               
+    # Optionally print dimensions and metrics
+    if verbose:
+        print("val_input shape: ", val_input.shape)
+        print("val_target shape: ", val_target.shape)
+        print("val_pred shape: ", val_pred.shape)     
+        print("val_target_abs shape: ", val_target_abs.shape)
+        print("val_pred_abs shape: ", val_pred_abs.shape)     
+        print("up movements percentage in val_target: ", val_balance)
+        print("ESN pred. accuracy: ", accuracy)
+        print("ESN mean abs. error (rel. change values): ", mae_rel_chg)
+        print("ESN mean abs. error (absolute values): ", mae_abs)
+
+    
+    # return values
+    return val_target_abs, val_pred_abs, accuracy, mae_rel_chg, mae_abs
+
+
 
 
 ### Define function to revert relative change values to absolute values.
@@ -357,7 +483,7 @@ def rel_to_abs(true_values, pred_values, target_length=1, abs_base=1.0, verbose=
         # Fidelity check: Plot true vs. predicted absolute values
         plt.figure(figsize=(16,8))
         plt.plot(range(len(true_values_abs)),true_values_abs,'b',label="true data", alpha=0.3)
-        plt.plot(range(len(pred_values_abs)),pred_values_abs,'k',  alpha=0.8, label='pred ESN')
+        plt.plot(range(len(pred_values_abs)),pred_values_abs,'k',  alpha=0.8, label='pred data')
         plt.legend()
         plt.show()
         
