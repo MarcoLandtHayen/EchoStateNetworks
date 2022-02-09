@@ -1,2 +1,3 @@
+/notebooks/__*
 .ipynb_checkpoints
 *.nc
