@@ -11,3 +11,12 @@ Project on Echo State Networks in all kinds of flavors.
  * Later tune and play with hyperparameters, input length, number of reservoir units, target length (1d, 2d,.., 10d) and prepare using multi-reservoirs with lagged input series.
  * Analyse convergence / divergence behavior of reservoir states, depending on several parameters: Activation, input length, scaling of relative change input values, spectral radius, sparsity.
  * Distribution of trained output weights W_out and final reservoir states x(T) for all reservoir units for single sample.
+* **ESN\_exp02.ipynb** plays with toy series and compares prediction performance of base ESN with CNN/LSTM hybrid network.
+ * Extended own functions **ESN_functions_v01.py** for preparing inputs, training ESN and prediction.
+ * Then set up 4 timeseries with increasing complexity based on sin-function with Gaussian noise.
+ * Try do model "regime-shift" or in other words: non-stationarity.
+ * Found similar performance of base ESN and CNN/LSTM with increasing noise in term of mean-absolute-error.
+ * But ESN shows advantages in stability (spread of mae), number of parameters and training-time.
+* **ESN\_exp03.ipynb**: Switch from base ESN to DeepESN.
+ * First play with additive decomposition of timeseries into linear trend, seasonality and residual noise, as in [Kim and King, 2020] paper "Time series prediction using Deep Echo State Networks".
+ * Then set up implementation of ESN layer, based on tensorflow implementation, able to extend to multiple ESN layer networks (= DeepESN).
