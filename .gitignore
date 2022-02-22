@@ -1,3 +1,4 @@
 /notebooks/__*
 .ipynb_checkpoints
 *.nc
+/notebooks/ESN_functions_temp.py
