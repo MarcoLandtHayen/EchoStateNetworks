@@ -337,6 +337,7 @@ def decompose_gridsearch(input_series,
 #
 ## Function output:
 # Returns Tensor X with all reservoir states for all samples for all timesteps, shape: (samples, timesteps, n_res)
+# Returns Tensor X_T with all FINAL reservoir states for all samples, shape: (samples, n_res)
 
 class ESN(tf.keras.layers.Layer):
     def __init__(self, n_res, W_in_lim=1, leak_rate=0.5, verbose=0):

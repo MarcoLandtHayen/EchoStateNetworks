@@ -19,6 +19,8 @@ Project on Echo State Networks in all kinds of flavors.
  * But ESN shows advantages in stability (spread of mae), number of parameters and training-time.
 * **ESN\_exp03.ipynb**: Additive decommposition of timeseries.
  * Play with additive decomposition of timeseries into linear trend, seasonality and residual noise, as in [Kim and King, 2020] paper "Time series prediction using Deep Echo State Networks".
-* **ESN\_exp04.ipynb**: Switch from base ESN to DeepESN.
+* **ESN\_exp04.ipynb**: Try custom implementation of ESN layer on base ESN.
  * After playing with additive decomposition of timeseries into linear trend, seasonality and residual noise, as in [Kim and King, 2020] paper "Time series prediction using Deep Echo State Networks" (--> exp03):
- * We are ready to set up implementation of ESN layer, based on tensorflow implementation, able to extend to multiple ESN layer networks (= DeepESN).
+ * We are ready to set up implementation of customized ESN layer, based on tensorflow implementation, extendable to multiple ESN layer networks (= DeepESN).
+* **ESN\_exp05.ipynb**: Set up first DeepESN model.
+ * Use customized implementation of ESN layer with customized functions for setting up ESN model, training model and getting predictions with evaluation metrics. 
