@@ -11,8 +11,10 @@ Version: 02 (2022-02-22)
 import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.tsa.stattools import adfuller
+
 import tensorflow as tf
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Dense, Lambda, concatenate
 import tensorflow.keras.initializers as tfi
 
 
@@ -384,3 +386,132 @@ class ESN(tf.keras.layers.Layer):
         # Return both: ALL reservoir states X and final reservoir states X[T].
         return X, X[:,-1,:]
 
+
+## Define function setESN to set up ESN model.
+#
+# Sets up an ESN model with desired number of ESN layers. Then modifies reservoir weights for all ESN layers,
+# to fulfill desired properties according to specified spectral radius.
+#
+## Input parameters:
+# input_length (int): Specified number of timesteps per input sample.
+# n_features: Number of input features, e.g. original series plus decomposed parts L, S and R --> 4
+# n_layers (int): Number of ESN layers in the model.
+# n_res (int): Number of reservoir units.
+# W_in_lim: Initialize input weights from random uniform distribution in [- W_in_lim, + W_in_lim]
+# leak_rate: Leak rate used in transition function of reservoir states.
+# spec_radius: Spectral radius, becomes largest Eigenvalue of reservoir weight matrix
+# sparsity: Sparsity of reservoir weight matrix.
+#
+## Function output:
+# Returns complete model "model".
+# Returns short model "model_short" without output layer, for getting reservoir states for given inputs.
+
+def setESN(input_length, n_features, n_layers, n_res, W_in_lim, leak_rate, spec_radius, sparsity, verbose=False):
+    
+    ## Set up model
+    
+    # Input layer
+    model_inputs = Input(shape=(input_length, n_features)) # (timesteps, features)
+    
+    # Set up storage for layers' final reservoir state tensors:    
+    X_T_all = []
+    
+    ## Loop for setting up desired number of ESN layers:
+    for l in range(n_layers):
+        
+        # First ESN needs to be connected to model_inputs:
+        if l == 0:
+            
+            # Use custom layer for setting up reservoir, returns ALL reservoir states X and FINAL reservoir states X_T.
+            X, X_T = ESN(n_res=n_res, W_in_lim=W_in_lim, leak_rate=leak_rate)(model_inputs)
+            
+            # Store resulting final reservoir states:            
+            X_T_all.append(X_T)
+            
+        # Further ESN layers need to be connected to previous ESN layer:
+        else:
+            
+            # Use new custom layer for setting up reservoir, again returns ALL reservoir states X and 
+            # FINAL reservoir states X_T.
+            X, X_T = ESN(n_res=n_res, W_in_lim=W_in_lim, leak_rate=leak_rate)(X)
+            
+            # Store resulting final reservoir states:            
+            X_T_all.append(X_T)
+            
+    ## Concatenate final reservoir states from ALL layers before passing result to output layer:
+
+    # In case we only have ONE layer, no concatenation is required:
+    if n_layers == 1:
+        X_T_concat = X_T_all[0]
+
+    # Else concatenate stored final reservoir states using lambda-function:
+    else:
+        X_T_concat = Lambda(lambda x: concatenate(x, axis=-1))(X_T_all)
+
+    # Output unit
+    output = Dense(units=1, activation=None, use_bias=True, 
+                   kernel_initializer=tfi.RandomUniform(minval=-W_in_lim, maxval=W_in_lim, seed=None),
+                   bias_initializer=tfi.RandomUniform(minval=-W_in_lim, maxval=W_in_lim, seed=None),
+                   name='output')(X_T_concat)
+
+    # Define complete model "model" plus short model "model_short" omitting the output layer, 
+    # for getting reservoir states for given inputs.
+    model = Model(model_inputs, output, name='model')
+    model_short = Model(model_inputs, X_T_concat, name='model_short')
+    
+    
+    ## Modify reservoir weights W_res using spectral radius:
+
+    # Get model weights for ALL layers
+    model_weights = np.array(model.get_weights())
+
+    # Loop over desired number of ESN layers for reservoir weights:
+    for l in range(n_layers):
+
+        # Extract reservoir weights
+        W_res = model_weights[2 + (l * 4)]
+
+        # Need temporary matrix W_temp to implement sparsity manually
+        W_temp = np.random.uniform(low=0, high=1, size=(n_res,n_res))
+        W_sparse = W_temp <= sparsity
+
+        # Now apply sparsity to initial W_res
+        W = W_sparse * W_res
+
+        # Get largest Eigenvalue of W
+        ev_max = np.max(np.real(np.linalg.eigvals(W)))
+
+        # Finally set up W_res
+        W_res = spec_radius * W / ev_max
+
+        # Integrate modified reservoir weights back into model weights
+        
+        # Extract reservoir weights
+        model_weights[2 + (l * 4)] = W_res
+
+    # Get modified reservoir weights for all ESN layers back into the model
+    model.set_weights(model_weights)
+    
+    
+    # Optionally reveal model summaries proof of sparsity and max. Eigenvalues for reservoir weights
+    if verbose:
+        
+        # Print model summaries
+        model.summary()
+        model_short.summary()  
+        
+       # Check sparsity and max Eigenvalues for ALL ESN layers' reservoir weights:
+        # Get model weights for ALL layers
+        model_weights = np.array(model.get_weights())
+
+        # Loop over layers:
+        for l in range(n_layers):
+            W_res = model_weights[2 + (l * 4)]            
+
+            print("\nLayer ", l+1)
+            print("========")
+            print("W_res sparsity: ", sum(sum(W_res != 0)) / (W_res.shape[0]**2))
+            print("W_res max EV: ", np.max(np.real((np.linalg.eigvals(W_res)))))
+
+    # Return model
+    return model, model_short
