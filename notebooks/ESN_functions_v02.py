@@ -18,6 +18,191 @@ from tensorflow.keras.layers import Input, Dense, Lambda, concatenate
 import tensorflow.keras.initializers as tfi
 
 
+### Define function to split data:
+
+## Function input: 
+# Feed timeseries with absolute values.
+
+## Parameters:
+# input_length (int): timesteps per input sample
+# target_length (int): number of steps ahead to predict
+# time_lag (int): Necessary when creating inputs for multi-reservoir ESN, having timelag 0,1,2,... days between
+#                 input and target.
+# train_val_split ([0,1]): rel. amount of input samples used for training
+# val_samples_from ('end', 'start_end'): Determines where to take validation samples from. Usually take
+#                                        samples from series 'end' as default, but can also take equal
+#                                        number of samples from beginning AND end ('start_end').
+# abs_to_rel_YN (True/False): if True, convert absolute values to relative change values
+# scaled_YN (True/False):if True, scale inputs and targets to [0,1] applying min/max scaling 
+#                        according to min/max obtained from only train inputs
+# verbose (True/False)): if True, print shapes of function input and output
+
+## Function output:
+# Returns arrays (samples, timesteps, timelag) train_input and val_input as abs. or rel. changes.
+# Returns series (samples, 1) train_target and val_target as abs. or rel. changes.
+# Returns train_min and train_max, used for scaling, set to ZERO, if scaled_YN=False.
+
+def split_data(data_abs, input_length, target_length, time_lag=0, 
+               train_val_split=0.8, val_samples_from='end', abs_to_rel_YN=True, binary_YN=False, scaled_YN=False,
+               verbose=True):
+    
+    # Optionally convert input data from absolute values to rel. change values.
+    if abs_to_rel_YN:
+        data = (data_abs[1:] - data_abs[:-1]) / data_abs[:-1]
+    else:
+        data = data_abs
+     
+    # Split data according to desired input_length, save series in list X.
+    # End up with (len(data) - input_length + 1) samples.
+    X = list()
+    for i in range(len(data) - input_length + 1):
+        sample = data[i:i+input_length]
+        X.append(sample)
+    
+    # Convert X to np.array.
+    X = np.array(X)
+    
+    # Cut the last target_length samples to make sure, we have a target for each input sample.
+    X = X[:-target_length]
+        
+    # Create targets, optionally as rel. change values from abs. values. 
+    # Take desired target_length into account. Store in Y.
+    if abs_to_rel_YN:
+        Y = (data_abs[target_length:] - data_abs[:-target_length]) / data_abs[:-target_length]
+    else:
+        Y = data_abs[target_length:]
+    
+    # Cut the first input_length targets, since we don't have input samples for these targets.
+    # And cut another time_lag targets upfront, to have identical dimensions for each time_lag slice later on.
+    # Note: If working with absolute targets, leave one more target, to have correct dimensions.
+    if abs_to_rel_YN:
+        Y = Y[input_length + time_lag:]
+    else:
+        Y = Y[input_length + time_lag - 1:]
+    
+    # Now take care of desired time_lag.
+    # lag=0 means to keep original input samples, but still need to reshape to have lag as third dimension.
+    # And leave out the first time_lag input samples to end up with the same dimensions for all lags.    
+    X_out = np.reshape(X[time_lag:], (X.shape[0] - time_lag, X.shape[1], 1))
+    
+    # lag>0 (loop over j) means to leave out the first (time_lag - j) input series and last j input series, 
+    # but keep the target fixed! And reshape to have lag as third dimension.
+    # Note: Loop starts with j=0, hence need j+1
+    for j in range(time_lag):
+        X_temp = np.reshape(X[time_lag-(j+1):-(j+1)], (X.shape[0] - time_lag, X.shape[1], 1))
+        X_out = np.concatenate((X_out, X_temp), axis=2)
+    
+    # re-assign obtained X_out to X
+    X = X_out    
+    
+    # Split inputs and targets into train and validation data according to train_val_split and
+    # desired val_samples_from attribute.
+    
+    # If validation samples are supposed to be from 'end' of series:
+    if val_samples_from == 'end':
+        n_train = int(len(X) * train_val_split)
+    
+        train_input = X[:n_train]
+        val_input = X[n_train:]
+        train_target = Y[:n_train]
+        val_target = Y[n_train:]
+    
+    # If validation samples are supposed to be from 'beginning' and 'end':
+    else:
+        n_train = int(len(X) * (1-train_val_split)/2)
+        
+        train_input = X[n_train:-n_train]
+        train_target = Y[n_train:-n_train]
+        val_input = np.concatenate((X[:n_train], X[-n_train:]))
+        val_target = np.concatenate((Y[:n_train], Y[-n_train:]))
+  
+    # Optionally scale train and validation inputs and targets to [0,1] 
+    # according to min/max obtained from train inputs.
+    # Initialize train_min and _max to zero, to have return values even if no scaling is desired.
+    train_min = 0
+    train_max = 0
+    if scaled_YN:
+        train_min = np.min(train_input)
+        train_max = np.max(train_input)
+
+        # scale input values and targets, according to min/min of ONLY train inputs:
+        # substract min and divide by (max - min)
+        train_input = (train_input - train_min) / (train_max - train_min)
+        val_input = (val_input - train_min) / (train_max - train_min)
+        train_target = (train_target - train_min) / (train_max - train_min)
+        val_target = (val_target - train_min) / (train_max - train_min)
+
+    # Re-sample targets to have dimension (samples, 1), as model prediction also have this dimension.
+    train_target = np.reshape(train_target, (train_target.shape[0], 1))
+    val_target = np.reshape(val_target, (val_target.shape[0], 1))
+
+    # Optionally print dimensions
+    if verbose:
+        print("raw data shape: ", data.shape)
+        print("train_input shape: ", train_input.shape)
+        print("val_input shape: ", val_input.shape)
+        print("train_target shape: ", train_target.shape)
+        print("val_target shape: ", val_target.shape)
+        print("train_min: ", train_min)
+        print("train_max: ", train_max)
+        
+    #return values
+    return train_input, val_input, train_target, val_target, train_min, train_max    
+
+
+### Define function to revert relative change values to absolute values.
+
+## Function input: 
+# Feed two time series with relative change values: prediction and true values.
+
+## Parameters:
+# abs_base: Optionally input initial absolute value to hook on, if omitted, set default: 1.
+# target_length (int): Necessary information to reconstruct absolute values from relativ change values.
+# verbose (True/False)): if True, print shapes of function input and output plus plot absolute time series.
+
+## Function output:
+# Returns two time series with absolute values: prediction and true values.
+
+def rel_to_abs(true_values, pred_values, target_length=1, abs_base=1.0, verbose=True):
+    
+    # Initialize storage for time series with absolute values.
+    true_values_abs = np.zeros(len(true_values))
+    pred_values_abs = np.zeros(len(true_values))
+    
+    # Loop over input series, optionally hook on base value
+    for i in range(len(true_values)):
+        
+        # First target_length values are hooked on the same base value (or default: 1), for simplicity.
+        # To be more accurate, one needed target_length base values to hook on.
+        if i < target_length:
+            true_values_abs[i] = abs_base * (1 + true_values[i])
+            pred_values_abs[i] = abs_base * (1 + pred_values[i])
+        # Here: One-step prediction with "teacher-forcing", hence hook on true absolute values.
+        # Note: Tage target_length into account, to hook on correct true value: target_length steps back.
+        elif i >= target_length:
+            true_values_abs[i] = true_values_abs[i-target_length] * (1 + true_values[i])
+            pred_values_abs[i] = true_values_abs[i-target_length] * (1 + pred_values[i])
+
+    
+    # Optionally print dimensions and plot true vs. predicted absolute values
+    if verbose:
+        
+        # Fidelity check: Plot true vs. predicted absolute values
+        plt.figure(figsize=(16,8))
+        plt.plot(range(len(true_values_abs)),true_values_abs,'b',label="true data", alpha=0.3)
+        plt.plot(range(len(pred_values_abs)),pred_values_abs,'k',  alpha=0.8, label='pred data')
+        plt.legend()
+        plt.show()
+        
+        print("input true_values shape: ", true_values.shape)
+        print("input pred_values shape: ", pred_values.shape)
+        print("output true_values_abs shape: ", true_values_abs.shape)
+        print("output pred_values_abs shape: ", pred_values_abs.shape)
+    
+    # return values
+    return true_values_abs, pred_values_abs
+
+
 
 ## Define function "decompose_split":
 # First step is additive decomposing given time series of absolute values into trend, seasonality and residual noise.
