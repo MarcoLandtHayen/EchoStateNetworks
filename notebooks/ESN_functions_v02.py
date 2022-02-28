@@ -550,7 +550,13 @@ class ESN(tf.keras.layers.Layer):
     
         # Connect inputs to reservoir units to get initial reservoir state (t=1), called x_prev, since
         # it will be used as "previous" state when calculating further reservoir states.
+        
+        ### Question: Do I consider leak_rate for initial reservoir states?
+        ## If yes:
         x_prev = self.leak_rate * tf.tanh(self.res_units_init(inputs[:,0:1,:])) # x(1) = leak_rate * tanh(W_in * u(1))
+        ## If no:
+        #x_prev = tf.tanh(self.res_units_init(inputs[:,0:1,:])) # x(1) = tanh(W_in * u(1))
+                
         
         # Initialize storage X for all reservoir states (samples, timesteps, n_res):
         # Store x_prev as x_1 in X
