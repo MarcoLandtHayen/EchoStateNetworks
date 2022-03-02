@@ -331,13 +331,13 @@ def decompose_split(input_series, input_length, target_length, train_val_split,
         # Note: Concatenate train and validation input, shape (samples, timesteps, features).
         #       Take last timestep for each sample and all features seperately.
         fig, axes = plt.subplots(4, 1, figsize=(15,15))
-        axes[0].plot(range(1, T-input_length+1),
+        axes[0].plot(range(1, T-input_length-target_length+2),
                      np.concatenate((train_input[:,-1,0],val_input[:,-1,0])), color="k", label="original data")  
-        axes[1].plot(range(1, T-input_length+1),
+        axes[1].plot(range(1, T-input_length-target_length+2),
                      np.concatenate((train_input[:,-1,1],val_input[:,-1,1])), color="b", label="Trend")
-        axes[2].plot(range(1, T-input_length+1),
+        axes[2].plot(range(1, T-input_length-target_length+2),
                      np.concatenate((train_input[:,-1,2],val_input[:,-1,2])), color="b", label="Seasonality")
-        axes[3].plot(range(1, T-input_length+1),
+        axes[3].plot(range(1, T-input_length-target_length+2),
                      np.concatenate((train_input[:,-1,3],val_input[:,-1,3])), color="b", label="Residuum")
         axes[3].set_xlabel("timestep", fontsize=12)
         axes[0].set_ylabel("original data", fontsize=12)
