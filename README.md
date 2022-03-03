@@ -24,3 +24,5 @@ Project on Echo State Networks in all kinds of flavors.
  * We are ready to set up implementation of customized ESN layer, based on tensorflow implementation, extendable to multiple ESN layer networks (= DeepESN).
 * **ESN\_exp05.ipynb**: Set up first DeepESN model.
  * Use customized implementation of ESN layer with customized functions for setting up ESN model, training model and getting predictions with evaluation metrics. 
+* **ESN\_wrapUP_decomposition_and_DeepESN.ipynb**: Summarize current knowledge on decomposing timeseries and setting up (Deep)ESN models with customized class layer and functions.
+* **ESN\_exp06_ENSO.ipynb**: Apply ESN methodology to well known real-world proclem: ENSO
