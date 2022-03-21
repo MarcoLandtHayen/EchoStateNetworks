@@ -589,7 +589,7 @@ class ESN(tf.keras.layers.Layer):
             if self.leak_rate_first_step_YN:
                 x_prev = self.leak_rate * tf.keras.activations.sigmoid(self.res_units_init(inputs[:,0:1,:])) # x(1) = leak_rate * sigm(W_in * u(1))
             else:
-                x_prev = tf.tanh(self.res_units_init(inputs[:,0:1,:])) # x(1) = sigm(W_in * u(1))
+                x_prev = tf.sigmoid(self.res_units_init(inputs[:,0:1,:])) # x(1) = sigm(W_in * u(1))
         
         # Initialize storage X for all reservoir states (samples, timesteps, n_res):
         # Store x_prev as x_1 in X
