@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Version: 03 (2022-03-04)
+Version: 04 (2022-03-04)
 @author: mlandt-hayen
 
 Content: Useful functions / class for EchoStateNetworks

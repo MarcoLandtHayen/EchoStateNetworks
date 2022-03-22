@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Version: 03 (2022-03-04)
+Version: 05 (2022-03-22)
 @author: mlandt-hayen
 
 Content: Useful functions / class for EchoStateNetworks
@@ -561,12 +561,12 @@ class ESN(tf.keras.layers.Layer):
                                                     activation=None, 
                                                     use_bias=True,
                                                     kernel_initializer=tfi.RandomUniform(minval=-W_in_lim, maxval=W_in_lim, seed=None),
-                                                    bias_initializer='zeros')
+                                                    bias_initializer=tfi.RandomUniform(minval=-W_in_lim, maxval=W_in_lim, seed=None))
         self.res_units = tf.keras.layers.Dense(units=n_res, 
                                                activation=None, 
                                                use_bias=True,
                                                kernel_initializer=tfi.RandomUniform(minval=-W_in_lim, maxval=W_in_lim, seed=None),
-                                               bias_initializer='zeros')
+                                               bias_initializer=tfi.RandomUniform(minval=-W_in_lim, maxval=W_in_lim, seed=None))
         self.verbose=verbose
     
     def call(self, inputs):
@@ -589,7 +589,15 @@ class ESN(tf.keras.layers.Layer):
             if self.leak_rate_first_step_YN:
                 x_prev = self.leak_rate * tf.keras.activations.sigmoid(self.res_units_init(inputs[:,0:1,:])) # x(1) = leak_rate * sigm(W_in * u(1))
             else:
-                x_prev = tf.tanh(self.res_units_init(inputs[:,0:1,:])) # x(1) = sigm(W_in * u(1))
+                x_prev = tf.sigmoid(self.res_units_init(inputs[:,0:1,:])) # x(1) = sigm(W_in * u(1))
+                
+        elif self.activation=='ReLU':
+            
+            # Optionally omit multiplication with alpha for calculating first timestep's reservoir states:
+            if self.leak_rate_first_step_YN:
+                x_prev = self.leak_rate * tf.keras.activations.relu(self.res_units_init(inputs[:,0:1,:])) # x(1) = leak_rate * sigm(W_in * u(1))
+            else:
+                x_prev = tf.keras.activations.relu(self.res_units_init(inputs[:,0:1,:])) # x(1) = sigm(W_in * u(1))
         
         # Initialize storage X for all reservoir states (samples, timesteps, n_res):
         # Store x_prev as x_1 in X
@@ -605,7 +613,9 @@ class ESN(tf.keras.layers.Layer):
                 x_t = (1 - self.leak_rate) * x_prev + self.leak_rate * tf.tanh(self.res_units_init(inputs[:,t:t+1,:]) + self.res_units(x_prev))
             elif self.activation=='sigmoid':
                 x_t = (1 - self.leak_rate) * x_prev + self.leak_rate * tf.keras.activations.sigmoid(self.res_units_init(inputs[:,t:t+1,:]) + self.res_units(x_prev))
-    
+            elif self.activation=='ReLU':
+                x_t = (1 - self.leak_rate) * x_prev + self.leak_rate * tf.keras.activations.relu(self.res_units_init(inputs[:,t:t+1,:]) + self.res_units(x_prev))
+
             # Store x_t in X
             X = tf.concat([X, x_t], axis=1)
             
@@ -614,7 +624,6 @@ class ESN(tf.keras.layers.Layer):
         
         # Return both: ALL reservoir states X and final reservoir states X[T].
         return X, X[:,-1,:]
-
 
 ## Define function setESN to set up ESN model.
 #
@@ -773,7 +782,7 @@ def trainESN(model, model_short, train_input, train_target, verbose=False):
     
     # Get number of output features from train targets:
     out_features = train_target.shape[1]
-    
+
     # Get final reservoir states for all train samples from short model    
     X_T_train = model_short.predict(train_input)
 
@@ -785,52 +794,53 @@ def trainESN(model, model_short, train_input, train_target, verbose=False):
     
     # Create vector of shape (samples, 1) containing ONEs to be added as additional column to final reservoir states.
     X_add = np.ones((X_T_train.shape[0], 1))
-    
+
     # Now add vector of ONEs as additional column to final reservoir states X_T_train.
     X_T_train_prime = np.concatenate((X_T_train, X_add), axis=-1)
-    
+
     # Then need pseudo-inverse of final reservoir states in augmented notation
     X_inv_prime = np.linalg.pinv(X_T_train_prime)
+
+    # Optionally reveal details on dimensions:
+    if verbose:
+        
+        print("\nshape of train input (samples, timesteps, input features): ", train_input.shape)
+        print("shape of model output X_T (samples, n_res): ", X_T_train.shape)
+  
+        print("\nFinal reservoir states in augmented notation, shape: ", X_T_train_prime.shape)
+        print("\ntrain_target shape (samples, output features): ", train_target.shape)        
+    
+        print("\nW_out shape: ", W_out.shape)
+        print("b_out shape: ", b_out.shape)
     
     # Need to train output features seperately, hence loop over number of output features:
     for out_feature in range(out_features):    
 
         # Then get output weights, in augmented notation
         W_out_prime = np.matmul(X_inv_prime, train_target[:,out_feature:out_feature+1])
-      
+
         # Now split output weights in augmented notation into trained output weights W_out and output bias b_out.
         W_out = W_out_prime[:-1,:]
         b_out = W_out_prime[-1:,0]
         #print("\nW_out: \n", W_out)
-       
+
         # Integrate trained output weights and bias into model weights
-        model_weights[-2][:,out_feature] = W_out
-        model_weights[-1][:,out_feature] = b_out
+        model_weights[-2][:,out_feature:out_feature+1] = W_out
+        model_weights[-1][out_feature] = b_out
         model.set_weights(model_weights)
     
-    # Optionally reveal model summaries proof of sparsity and max. Eigenvalues for reservoir weights
-    if verbose:
-        
-        print("\nshape of train input (samples, timesteps, input features): ", train_input.shape)
-        print("shape of model output X_T (samples, n_res): ", X_T_train.shape)
+        # Optionally reveal details on traines output weights and bias(es)
+        if verbose:
 
-        print("\nW_out shape: ", W_out.shape)
-        print("b_out shape: ", b_out.shape)
+            print("\noutput feature ", out_feature, ", trained b_out: ", b_out)
 
-        print("\nFinal reservoir states in augmented notation, shape: ", X_T_train_prime.shape)
-
-        print("\ntrain_target shape (samples, output features): ", train_target.shape)        
-        print("W_out_prime shape: ", W_out_prime.shape)
-
-        print("\ntrained b_out: \n", b_out)
-        
-        # Plot histogram of trained output weights
-        nBins = 100
-        fig, axes = plt.subplots(1, 1, figsize=(10,5))
-        axes.hist(W_out[:,0], nBins, color="blue")
-        axes.set_ylabel("counts")
-        axes.set_title("Histogram of trained output weights")
-        plt.show()
+            # Plot histogram of trained output weights
+            nBins = 100
+            fig, axes = plt.subplots(1, 1, figsize=(10,5))
+            axes.hist(W_out[:,0], nBins, color="blue")
+            axes.set_ylabel("counts")
+            axes.set_title("Histogram of trained output weights")
+            plt.show()
 
     return model
 
