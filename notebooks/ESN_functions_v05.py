@@ -757,7 +757,7 @@ def setESN(input_length, in_features, out_features, n_layers, n_res, W_in_lim, l
             print("\nLayer ", l+1)
             print("========")
             print("W_res sparsity: ", sum(sum(W_res != 0)) / (W_res.shape[0]**2))
-            print("W_res max EV: ", np.max(np.real((np.linalg.eigvals(W_res)))))
+            #print("W_res max EV: ", np.max(np.real((np.linalg.eigvals(W_res)))))
 
     # Return models
     return model, model_short, all_states
