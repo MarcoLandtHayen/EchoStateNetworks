@@ -35,5 +35,6 @@ Project on Echo State Networks in all kinds of flavors.
  * **ESN\_exp08\_LRP\_part5**: Couple inputs directly to reservoir units by feeding whole. Sst anomaly field in first timestep. Then let reservoir swing for several timesteps, without additional inputs.
 * **ESN\_exp09\_Classification\_LRP.ipynb**: This experiments consists of various parts, stored in individual notebooks. Basically it refactores and extends code from **exp08**. The general outline is still to use different model architectures for classification of sst anomaly fields according to El Nino / La Nina events and then open the black-box with layer-wise relevance propagation (LRP).
  * **ESN\_exp09\_Classification\_LRP\_part4**: This part revises data pre-processing and enables to feed only *valid* gridpoints into the model, when using vectorized sst anomaly fields as inputs.
+ * **ESN_exp09_Classification_LRP_part5**: In this part we step back from one-hot targets to continuous sst anomaly index as single target with capped inputs. We then find nice performance and relevance maps. We also investigate fading memory effect, according to leakrate alpha and try to disturb col-wise baseESN by applying some random permutation on the inputs.
 
 
