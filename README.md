@@ -36,5 +36,5 @@ Project on Echo State Networks in all kinds of flavors.
 * **ESN\_exp09\_Classification\_LRP.ipynb**: This experiments consists of various parts, stored in individual notebooks. Basically it refactores and extends code from **exp08**. The general outline is still to use different model architectures for classification of sst anomaly fields according to El Nino / La Nina events and then open the black-box with layer-wise relevance propagation (LRP).
  * **ESN\_exp09\_Classification\_LRP\_part4**: This part revises data pre-processing and enables to feed only *valid* gridpoints into the model, when using vectorized sst anomaly fields as inputs.
  * **ESN_exp09_Classification_LRP_part5**: In this part we step back from one-hot targets to continuous sst anomaly index as single target with capped inputs. We then find nice performance and relevance maps. We also investigate fading memory effect, according to leakrate alpha and try to disturb col-wise baseESN by applying some random permutation on the inputs.
-
+* **ESN_exp10_Classification_LRP_syntheticSamples**: Try to use base ESN model to classify synthetic samples and apply layer-wise relevance propagation. Samples can only be discriminated by the left half, whereas the right-hand side is identical - except for some random noise. This experiment investigates how leakrate alpha serves as memory parameter.
 
